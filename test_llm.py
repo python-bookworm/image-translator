@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Send a simple message to the configured OpenAI-compatible LLM endpoint.
 
-Usage from the project root:
-    python scripts/test_llm.py
-    python scripts/test_llm.py "请介绍一下你自己"
-    python scripts/test_llm.py --env-file /path/to/.env.native "你好"
-
-The script intentionally tests the LLM endpoint directly. It does not load
-OCR, PaddleOCR, NLLB, or the FastAPI application.
-"""
 
 from __future__ import annotations
 
