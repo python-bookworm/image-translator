@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from collections.abc import Sequence
 from typing import Protocol
 
@@ -73,9 +74,10 @@ class LlmTranslator:
 
         translated: list[str] = []
         try:
-            for start in range(0, len(texts), self._settings.llm_batch_size):
-                batch = list(texts[start : start + self._settings.llm_batch_size])
-                _, batch_translated = self._translate_batch(batch, source_language, target_language)
+            for batch in self._build_batches(texts):
+                _, batch_translated = self._translate_batch_with_recovery(
+                    batch, source_language, target_language
+                )
                 translated.extend(batch_translated)
         except Exception as exc:
             return self._fallback_or_raise(texts, source_language, target_language, exc)
@@ -86,9 +88,8 @@ class LlmTranslator:
     ) -> tuple[str, list[str]]:
         translated: list[str] = []
         detected_languages: list[str] = []
-        for start in range(0, len(texts), self._settings.llm_batch_size):
-            batch = list(texts[start : start + self._settings.llm_batch_size])
-            detected, batch_translated = self._translate_batch(
+        for batch in self._build_batches(texts):
+            detected, batch_translated = self._translate_batch_with_recovery(
                 batch, "auto", target_language
             )
             detected_languages.append(detected)
@@ -98,6 +99,101 @@ class LlmTranslator:
         if len(set(detected_languages)) > 1:
             logger.warning("OCR batches contain multiple source languages: %s", detected_languages)
         return detected_languages[0], translated
+
+    def _build_batches(self, texts: Sequence[str]) -> list[list[str]]:
+        batches: list[list[str]] = []
+        current: list[str] = []
+        current_chars = 0
+        max_chars = self._settings.llm_max_batch_chars
+        for text in texts:
+            text_chars = len(text)
+            if current and (
+                len(current) >= self._settings.llm_batch_size
+                or current_chars + text_chars > max_chars
+            ):
+                batches.append(current)
+                current = []
+                current_chars = 0
+            current.append(text)
+            current_chars += text_chars
+        if current:
+            batches.append(current)
+        return batches
+
+    def _translate_batch_with_recovery(
+        self, texts: list[str], source_language: str, target_language: str
+    ) -> tuple[str, list[str]]:
+        """Recover incomplete model output without weakening ID validation."""
+        if not texts:
+            return source_language, []
+        try:
+            return self._translate_batch(texts, source_language, target_language)
+        except _IncompleteTranslation as first_error:
+            expected = list(range(len(texts)))
+            translations = dict(first_error.translations)
+            detected = first_error.detected_language
+            missing = [index for index in expected if index not in translations]
+            logger.warning(
+                "LLM partial response: requested=%d returned=%d missing=%s finish_reason=%s",
+                len(texts),
+                len(translations),
+                missing,
+                first_error.finish_reason,
+            )
+
+            for attempt in range(self._settings.llm_retry_count):
+                if not missing:
+                    break
+                if self._settings.llm_retry_backoff_seconds:
+                    time.sleep(self._settings.llm_retry_backoff_seconds * (attempt + 1))
+                retry_texts = [texts[index] for index in missing]
+                try:
+                    retry_detected, retry_translated = self._translate_batch(
+                        retry_texts, source_language, target_language
+                    )
+                    for index, value in zip(missing, retry_translated):
+                        translations[index] = value
+                    detected = detected or retry_detected
+                    missing = [index for index in expected if index not in translations]
+                except _IncompleteTranslation as retry_error:
+                    # A retry uses local IDs, so retain only the complete prefix/response
+                    # that can be mapped to this retry request; unresolved items are split below.
+                    logger.warning(
+                        "LLM retry incomplete: attempt=%d requested=%d returned=%d missing=%s",
+                        attempt + 1,
+                        len(retry_texts),
+                        len(retry_error.translations),
+                        retry_error.missing,
+                    )
+                    for local_id, value in retry_error.translations.items():
+                        if local_id < len(missing):
+                            translations[missing[local_id]] = value
+                    detected = detected or retry_error.detected_language
+                    missing = [index for index in expected if index not in translations]
+            if not missing:
+                return detected or source_language, [translations[index] for index in expected]
+
+            # The first response was likely output-truncated. Smaller recursive calls
+            # make the recovery independent of the gateway's generation limit.
+            if len(texts) == 1:
+                raise first_error
+            recovered: dict[int, str] = {}
+            for index in missing:
+                try:
+                    child_detected, child_values = self._translate_batch_with_recovery(
+                        [texts[index]], source_language, target_language
+                    )
+                except Exception:
+                    raise first_error
+                recovered[index] = child_values[0]
+                detected = detected or child_detected
+            translations.update(recovered)
+            return detected or source_language, [translations[index] for index in expected]
+
+    def _translate_batch_once(
+        self, texts: list[str], source_language: str, target_language: str
+    ) -> tuple[str, list[str]]:
+        return self._translate_batch(texts, source_language, target_language)
 
     def _translate_batch(
         self, texts: list[str], source_language: str, target_language: str
@@ -120,7 +216,8 @@ class LlmTranslator:
             "Preserve names, numbers, units, punctuation, placeholders and line intent. "
             "Do not explain or add content. Return JSON only in this exact shape: "
             '{"source_language":"tr","translations":[{"id":0,"text":"translated text"}]}. '
-            "Return exactly one item for every input id and keep each id unchanged."
+            "Return exactly one item for every input id and keep each id unchanged. "
+            "Never stop before all required ids are returned."
         )
         user_message = (
             f"Translate the following OCR text from {source_name} "
@@ -128,6 +225,7 @@ class LlmTranslator:
             "If the source language is unknown, identify it from the OCR text. "
             "Use a lowercase ISO-639-1 code in source_language. It must be one of: "
             f"{', '.join(code for code in BY_CODE if code != 'auto')}.\n"
+            f"Required translation ids, exactly once each: {list(range(len(texts)))}\n"
             f"Input JSON:\n{json.dumps({'items': items}, ensure_ascii=False)}"
         )
         headers = {"Content-Type": "application/json"}
@@ -145,6 +243,7 @@ class LlmTranslator:
                     ],
                     "temperature": self._settings.llm_temperature,
                     "stream": False,
+                    "max_tokens": self._settings.llm_max_output_tokens,
                 },
                 timeout=self._settings.llm_timeout_seconds,
             )
@@ -175,13 +274,17 @@ class LlmTranslator:
                 f"LLM service returned HTTP {response.status_code}: {detail or '<empty body>'}"
             ) from exc
         try:
-            content = response.json()["choices"][0]["message"]["content"]
+            response_payload = response.json()
+            choice = response_payload["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise ValueError("LLM response does not contain choices[0].message.content") from exc
+        finish_reason = choice.get("finish_reason")
         logger.info(
-            "LLM response received: status=%d response_chars=%d content=%s",
+            "LLM response received: status=%d response_chars=%d finish_reason=%s content=%s",
             response.status_code,
             len(content),
+            finish_reason,
             _log_text(content),
         )
         detected = (
@@ -189,7 +292,16 @@ class LlmTranslator:
             if source_language == "auto"
             else source_language
         )
-        translated = parse_translation_response(content, len(texts))
+        try:
+            translated = parse_translation_response(content, len(texts))
+        except ValueError as exc:
+            partial = _parse_partial_translations(content)
+            missing = sorted(set(range(len(texts))) - set(partial))
+            if partial and missing:
+                raise _IncompleteTranslation(
+                    str(exc), partial, detected, missing, finish_reason
+                ) from exc
+            raise
         logger.info(
             "LLM response parsed: detected_language=%s translations=%s",
             detected,
@@ -214,6 +326,22 @@ class LlmTranslator:
             raise error
         logger.warning("LLM translation failed; falling back to NLLB: %s", error)
         return self._fallback.translate(texts, source_language, target_language)
+
+
+class _IncompleteTranslation(ValueError):
+    def __init__(
+        self,
+        message: str,
+        translations: dict[int, str],
+        detected_language: str,
+        missing: list[int],
+        finish_reason: str | None,
+    ) -> None:
+        super().__init__(message)
+        self.translations = translations
+        self.detected_language = detected_language
+        self.missing = missing
+        self.finish_reason = finish_reason
 
 
 class NllbTranslator:
@@ -318,6 +446,26 @@ def parse_translation_response(content: str, expected_count: int) -> list[str]:
         unexpected = sorted(set(by_id) - expected_ids)
         raise ValueError(f"LLM translation ids mismatch; missing={missing}, unexpected={unexpected}")
     return [by_id[index] for index in range(expected_count)]
+
+
+def _parse_partial_translations(content: str) -> dict[int, str]:
+    """Best-effort extraction used only to recover an incomplete response."""
+    try:
+        payload = _extract_json_object(content)
+    except ValueError:
+        return {}
+    translations = payload.get("translations")
+    if not isinstance(translations, list):
+        return {}
+    result: dict[int, str] = {}
+    for item in translations:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        text = item.get("text")
+        if isinstance(item_id, int) and isinstance(text, str) and item_id not in result:
+            result[item_id] = text.strip()
+    return result
 
 
 def parse_source_language_response(content: str) -> str:

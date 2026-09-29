@@ -35,7 +35,12 @@ class Settings(BaseSettings):
     llm_model: str = "default/deepseek-v3-2"
     llm_timeout_seconds: int = Field(default=120, ge=1, le=1200)
     llm_temperature: float = Field(default=0.1, ge=0, le=2)
-    llm_batch_size: int = Field(default=24, ge=1, le=100)
+    # Smaller batches reduce JSON truncation on gateways with conservative output limits.
+    llm_batch_size: int = Field(default=8, ge=1, le=100)
+    llm_max_batch_chars: int = Field(default=1200, ge=100, le=10000)
+    llm_max_output_tokens: int = Field(default=4096, ge=256, le=32768)
+    llm_retry_count: int = Field(default=2, ge=0, le=5)
+    llm_retry_backoff_seconds: float = Field(default=1.0, ge=0, le=30)
     llm_fallback_to_nllb: bool = True
     # Requests inherits HTTP(S)_PROXY from the shell by default. Keep proxy
     # behavior explicit because internal LLM endpoints often reject proxies.
