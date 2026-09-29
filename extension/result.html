@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Translated image</title>
+    <link rel="stylesheet" href="result.css">
+  </head>
+  <body>
+    <header class="toolbar">
+      <div>
+        <strong>Translated image</strong>
+        <span id="metadata" class="metadata"></span>
+      </div>
+      <div class="actions">
+        <div class="segmented" role="group" aria-label="Image view">
+          <button id="showTranslated" class="active" type="button">Translated</button>
+          <button id="showOriginal" type="button">Original</button>
+        </div>
+        <button id="download" type="button" title="Download translated image">Download</button>
+      </div>
+    </header>
+    <main>
+      <p id="status">Loading result...</p>
+      <img id="resultImage" alt="Translated result" hidden>
+    </main>
+    <script src="result.js"></script>
+  </body>
+</html>
+

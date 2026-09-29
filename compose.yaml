@@ -1,0 +1,57 @@
+services:
+  image-translator:
+    image: image-translator-poc:0.1.0
+    build:
+      context: .
+      args:
+        CUDA_IMAGE: ${CUDA_IMAGE:-nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04}
+        PADDLE_INDEX_URL: ${PADDLE_INDEX_URL:-https://www.paddlepaddle.org.cn/packages/stable/cu126/}
+        PADDLE_VERSION: ${PADDLE_VERSION:-3.2.0}
+        TORCH_INDEX_URL: ${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cu126}
+        TORCH_VERSION: ${TORCH_VERSION:-2.7.1}
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: ${APP_PORT:-8080}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      OCR_DET_MODEL_DIR: /opt/image-translator/models/v5/PP-OCRv5_server_det
+      OCR_REC_MODEL_DIR: /opt/image-translator/models/v5/PP-OCRv5_server_rec
+      OCR_ORIENTATION_MODEL_DIR: /opt/image-translator/models/v5/PP-LCNet_x1_0_textline_ori
+      OCR_DEVICE: ${OCR_DEVICE:-gpu:0}
+      OCR_PRECISION: ${OCR_PRECISION:-fp16}
+      OCR_CPU_THREADS: ${OCR_CPU_THREADS:-8}
+      OCR_WARMUP: ${OCR_WARMUP:-true}
+      OCR_MIN_SCORE: ${OCR_MIN_SCORE:-0.45}
+      TRANSLATION_MODEL_DIR: /opt/image-translator/models/nllb-200-distilled-600M
+      TRANSLATION_DEVICE: ${TRANSLATION_DEVICE:-cuda:0}
+      TRANSLATION_DTYPE: ${TRANSLATION_DTYPE:-float16}
+      TRANSLATION_BATCH_SIZE: ${TRANSLATION_BATCH_SIZE:-16}
+      TRANSLATION_MAX_INPUT_TOKENS: ${TRANSLATION_MAX_INPUT_TOKENS:-512}
+      TRANSLATION_MAX_NEW_TOKENS: ${TRANSLATION_MAX_NEW_TOKENS:-256}
+      TRANSLATION_PROVIDER: ${TRANSLATION_PROVIDER:-llm}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:8000/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-default/deepseek-v3-2}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-120}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.1}
+      LLM_BATCH_SIZE: ${LLM_BATCH_SIZE:-24}
+      LLM_FALLBACK_TO_NLLB: ${LLM_FALLBACK_TO_NLLB:-true}
+      RENDER_FONT_PATH: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+      RENDER_MIN_FONT_SIZE: ${RENDER_MIN_FONT_SIZE:-10}
+      RENDER_MAX_FONT_SIZE: ${RENDER_MAX_FONT_SIZE:-64}
+      RENDER_INPAINT_RADIUS: ${RENDER_INPAINT_RADIUS:-4}
+      MAX_IMAGE_BYTES: ${MAX_IMAGE_BYTES:-20971520}
+      MAX_IMAGE_PIXELS: ${MAX_IMAGE_PIXELS:-40000000}
+      LANGUAGE_ID_MODEL: ${LANGUAGE_ID_MODEL:-}
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: "True"
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    ports:
+      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+    volumes:
+      - ./models:/opt/image-translator/models:ro
+    gpus: all
+    shm_size: 2gb
+    restart: unless-stopped
+    stop_grace_period: 30s

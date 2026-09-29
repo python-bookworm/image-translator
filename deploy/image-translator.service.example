@@ -1,0 +1,24 @@
+[Unit]
+Description=Local OCR and NLLB image translation service
+After=network.target
+
+[Service]
+Type=simple
+User=image-translator
+Group=image-translator
+WorkingDirectory=/opt/image-translator-poc
+Environment=PROJECT_DIR=/opt/image-translator-poc
+Environment=PYTHON_BIN=/opt/image-translator-venv/bin/python
+Environment=ENV_FILE=/opt/image-translator-poc/.env.native
+ExecStart=/opt/image-translator-poc/scripts/start_native_linux.sh
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=30
+KillSignal=SIGINT
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,27 @@
+:root { font-family: Arial, "Microsoft YaHei", sans-serif; color: #202428; }
+body { margin: 0; min-width: 330px; background: #f5f6f7; }
+form { display: grid; gap: 14px; padding: 18px; }
+h1 { font-size: 18px; margin: 0 0 2px; }
+label { display: grid; font-size: 13px; font-weight: 600; gap: 6px; }
+input, select {
+  background: #fff;
+  border: 1px solid #bbc1c8;
+  border-radius: 4px;
+  font: inherit;
+  font-weight: 400;
+  min-height: 36px;
+  padding: 0 9px;
+}
+.footer { align-items: center; display: flex; justify-content: space-between; min-height: 36px; }
+#message { color: #167a5b; font-size: 12px; }
+.buttons { display: flex; gap: 8px; }
+button {
+  background: #167a5b;
+  border: 0;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  min-height: 34px;
+  padding: 0 18px;
+}
+button.secondary { background: #4b5560; }

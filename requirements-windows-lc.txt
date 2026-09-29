@@ -1,0 +1,11 @@
+# Application packages missing from the existing lc environment.
+# PyTorch is intentionally separate because the correct CPU/CUDA wheel is host-specific.
+fastapi==0.116.1
+uvicorn==0.35.0
+python-multipart==0.0.20
+transformers==4.55.4
+sentencepiece==0.2.1
+httptools==0.6.4
+watchfiles==1.1.0
+websockets==15.0.1
+

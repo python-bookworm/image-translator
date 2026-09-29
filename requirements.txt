@@ -1,0 +1,12 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.20
+pydantic-settings==2.10.1
+requests>=2.32,<3
+numpy>=1.26,<3
+opencv-python-headless==4.11.0.86
+Pillow==11.3.0
+transformers==4.55.4
+sentencepiece==0.2.1
+# Install PyTorch and PaddlePaddle separately for the target CUDA version.
+paddleocr>=3.1,<4

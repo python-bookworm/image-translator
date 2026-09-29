@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Local Image Translator POC",
+  "version": "0.2.1",
+  "description": "Translate image text with OCR and replace the image in the current page.",
+  "permissions": ["contextMenus", "storage", "tabs", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Image translator settings",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/3.png",
+      "32": "icons/3.png",
+      "48": "icons/3.png",
+      "128": "icons/3.png"
+    }
+  },
+  "icons": {
+    "16": "icons/3.png",
+    "32": "icons/3.png",
+    "48": "icons/3.png",
+    "128": "icons/3.png"
+  },
+  "options_page": "popup.html"
+}
